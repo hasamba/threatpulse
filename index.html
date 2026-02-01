@@ -604,8 +604,8 @@ async function fetchURLhaus() {
       const sev = u.threat === 'malware_download' ? 'critical' : u.threat === 'malware' ? 'high' : 'medium';
       return {
         id: 'UH-' + (u.urlhaus_link || '').split('/').filter(Boolean).pop(),
-        title: '🔗 ' + (u.url || '').substring(0, 80),
-        description: 'Threat: ' + (u.threat || 'unknown') + ' | Status: ' + (u.url_status || 'unknown') + ' | Reporter: ' + (u.reporter || 'unknown'),
+        title: '🔗 ' + (u.threat || 'Malicious URL').replace(/_/g, ' ').toUpperCase() + (u.tags && u.tags.length ? ' — ' + (Array.isArray(u.tags) ? u.tags : []).join(', ') : ''),
+        description: u.url + ' | Status: ' + (u.url_status || 'unknown') + ' | Reporter: ' + (u.reporter || 'unknown'),
         severity: sev,
         source: 'urlhaus',
         sourceName: 'URLhaus',
