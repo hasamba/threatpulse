@@ -691,7 +691,8 @@ function renderCard(t) {
   const tagsHtml = (t.tags || []).slice(0, 3).map(tag =>
     '<span class="badge badge-category">' + esc(tag) + '</span>'
   ).join('');
-  const iocHtml = t.ioc ? '<div class="card-ioc">' + esc(t.ioc) + '</div>' : '';
+  const defangedIoc = t.ioc ? t.ioc.replace(/https?:\/\//g, m => m.replace('http', 'hxxp')).replace(/\./g, '[.]') : '';
+  const iocHtml = defangedIoc ? '<div class="card-ioc">' + esc(defangedIoc) + '</div>' : '';
   const linkAttr = t.link ? ' href="' + esc(t.link) + '" target="_blank" rel="noopener"' : '';
   const cvssHtml = t.cvss ? '<span class="card-meta-item">⚡ CVSS ' + t.cvss.toFixed(1) + '</span>' : '';
   const confHtml = t.confidence ? '<span class="card-meta-item">🎯 ' + t.confidence + '%</span>' : '';
