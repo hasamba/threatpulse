@@ -553,10 +553,11 @@ function setApiStatus(id, ok) {
   el.className = 'api-indicator ' + (ok ? 'api-ok' : 'api-err');
 }
 
-// ─── Fetch NVD/CVE ──────────────────────────────────────────────
+// ─── Fetch from pre-built static JSON (updated hourly by GitHub Actions) ───
+
 async function fetchNVD() {
   try {
-    const r = await fetch('https://services.nvd.nist.gov/rest/json/cves/2.0?resultsPerPage=10');
+    const r = await fetch('data/nvd.json');
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const data = await r.json();
     setApiStatus('apiNvd', true);
@@ -593,27 +594,26 @@ async function fetchNVD() {
   }
 }
 
-// ─── Fetch URLhaus ──────────────────────────────────────────────
 async function fetchURLhaus() {
   try {
-    const r = await fetch('https://api.github.com/advisories?per_page=15&type=malware');
+    const r = await fetch('data/urlhaus.json');
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const data = await r.json();
     setApiStatus('apiUrlhaus', true);
-    return data.map(adv => {
-      const sev = adv.severity === 'critical' ? 'critical' : adv.severity === 'high' ? 'high' : adv.severity === 'medium' ? 'medium' : 'low';
+    return (data.urls || []).slice(0, 15).map(u => {
+      const sev = u.threat === 'malware_download' ? 'critical' : u.threat === 'malware' ? 'high' : 'medium';
       return {
-        id: adv.ghsa_id,
-        title: '🦠 ' + (adv.summary || adv.ghsa_id),
-        description: (adv.description || '').slice(0, 300),
+        id: 'UH-' + (u.urlhaus_link || '').split('/').filter(Boolean).pop(),
+        title: '🔗 ' + (u.url || '').substring(0, 80),
+        description: 'Threat: ' + (u.threat || 'unknown') + ' | Status: ' + (u.url_status || 'unknown') + ' | Reporter: ' + (u.reporter || 'unknown'),
         severity: sev,
         source: 'urlhaus',
-        sourceName: 'GitHub Malware',
+        sourceName: 'URLhaus',
         category: 'Malware',
-        date: adv.published_at || adv.updated_at || new Date().toISOString(),
-        link: adv.html_url || 'https://github.com/advisories/' + adv.ghsa_id,
-        ioc: adv.cve_id || adv.ghsa_id,
-        tags: (adv.identifiers || []).map(i => i.value).filter(Boolean),
+        date: u.dateadded || new Date().toISOString(),
+        link: u.urlhaus_link || 'https://urlhaus.abuse.ch',
+        ioc: u.url || '',
+        tags: Array.isArray(u.tags) ? u.tags : (u.tags || '').split(',').filter(Boolean),
       };
     });
   } catch (e) {
@@ -623,14 +623,44 @@ async function fetchURLhaus() {
   }
 }
 
-// ─── Fetch ThreatFox ────────────────────────────────────────────
 async function fetchThreatFox() {
   try {
-    const r = await fetch('https://api.github.com/advisories?per_page=15&type=reviewed');
+    const r = await fetch('data/threatfox.json');
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const data = await r.json();
     setApiStatus('apiThreatfox', true);
-    return data.map(adv => {
+    return (data.data || []).slice(0, 15).map(ioc => {
+      const confidence = ioc.confidence_level || 50;
+      const sev = confidence >= 90 ? 'critical' : confidence >= 70 ? 'high' : confidence >= 50 ? 'medium' : 'low';
+      return {
+        id: 'TF-' + (ioc.ioc_value || '').substring(0, 12),
+        title: (ioc.ioc_type || 'IOC') + ': ' + (ioc.ioc_value || '').substring(0, 80),
+        description: 'Malware: ' + (ioc.malware_printable || 'unknown') + ' | Type: ' + (ioc.threat_type || 'unknown'),
+        severity: sev,
+        confidence,
+        source: 'threatfox',
+        sourceName: 'ThreatFox',
+        category: 'Threat Intel',
+        date: ioc.first_seen_utc || new Date().toISOString(),
+        link: ioc.reference || 'https://threatfox.abuse.ch',
+        ioc: ioc.ioc_value || '',
+        tags: Array.isArray(ioc.tags) ? ioc.tags : (ioc.tags || '').split(',').filter(Boolean),
+      };
+    });
+  } catch (e) {
+    setApiStatus('apiThreatfox', false);
+    errors.push({ source: 'ThreatFox', message: e.message });
+    return [];
+  }
+}
+
+async function fetchOTX() {
+  try {
+    const r = await fetch('data/github.json');
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const data = await r.json();
+    setApiStatus('apiOtx', true);
+    return (data || []).slice(0, 15).map(adv => {
       const sevMap = { 'critical': 'critical', 'high': 'high', 'medium': 'medium', 'low': 'low' };
       const sev = sevMap[adv.severity] || 'medium';
       return {
@@ -638,7 +668,7 @@ async function fetchThreatFox() {
         title: adv.summary || adv.ghsa_id,
         description: (adv.description || '').slice(0, 300),
         severity: sev,
-        source: 'threatfox',
+        source: 'otx',
         sourceName: 'GitHub Advisory',
         category: 'Security Advisory',
         date: adv.published_at || adv.updated_at || new Date().toISOString(),
@@ -648,44 +678,8 @@ async function fetchThreatFox() {
       };
     });
   } catch (e) {
-    setApiStatus('apiThreatfox', false);
-    errors.push({ source: 'GitHub Advisory', message: e.message });
-    return [];
-  }
-}
-
-// ─── Fetch AlienVault OTX ───────────────────────────────────────
-async function fetchOTX() {
-  try {
-    const proxy = 'https://api.allorigins.win/raw?url=';
-    const url = encodeURIComponent('https://otx.alienvault.com/api/v1/pulses/subscribed?limit=10');
-    const r = await fetch(proxy + url);
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    const data = await r.json();
-    setApiStatus('apiOtx', true);
-    return (data.results || []).slice(0, 10).map(p => {
-      const tags = p.tags || [];
-      const sev = tags.some(t => /apt|ransomware|critical/i.test(t)) ? 'critical'
-                : tags.some(t => /malware|trojan|exploit/i.test(t)) ? 'high'
-                : tags.some(t => /phish|spam/i.test(t)) ? 'medium' : 'info';
-      const indicators = (p.indicators || []).length;
-      return {
-        id: 'OTX-' + (p.id || '').substring(0, 8),
-        title: p.name || 'OTX Pulse',
-        description: (p.description || 'No description.').substring(0, 300) + (indicators ? ' [' + indicators + ' indicators]' : ''),
-        severity: sev,
-        source: 'otx',
-        sourceName: 'AlienVault OTX',
-        category: 'Threat Intel',
-        date: p.created || p.modified || new Date().toISOString(),
-        link: 'https://otx.alienvault.com/pulse/' + p.id,
-        tags,
-        indicators,
-      };
-    });
-  } catch (e) {
     setApiStatus('apiOtx', false);
-    errors.push({ source: 'AlienVault OTX', message: e.message });
+    errors.push({ source: 'GitHub Advisory', message: e.message });
     return [];
   }
 }

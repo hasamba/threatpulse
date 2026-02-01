@@ -1,0 +1,63 @@
+name: Update Threat Data
+on:
+  schedule:
+    - cron: '0 */1 * * *'  # Every hour
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch threat data
+        run: |
+          mkdir -p data
+
+          # NVD - Latest CVEs
+          curl -sf "https://services.nvd.nist.gov/rest/json/cves/2.0?resultsPerPage=15" -o data/nvd.json || echo '{"vulnerabilities":[]}' > data/nvd.json
+
+          # URLhaus - Recent malicious URLs (public JSON feed)
+          curl -sf "https://urlhaus.abuse.ch/downloads/json_recent/" -o data/urlhaus_raw.json || echo '{}' > data/urlhaus_raw.json
+          python3 -c "
+          import json
+          with open('data/urlhaus_raw.json') as f:
+              data = json.load(f)
+          urls = []
+          for k, v in list(data.items())[:15]:
+              if isinstance(v, list) and v:
+                  urls.append(v[0])
+          json.dump({'urls': urls}, open('data/urlhaus.json', 'w'))
+          "
+
+          # ThreatFox - Recent IOCs (public JSON feed)
+          curl -sf "https://threatfox.abuse.ch/export/json/recent/" -o data/threatfox_raw.json || echo '{}' > data/threatfox_raw.json
+          python3 -c "
+          import json
+          with open('data/threatfox_raw.json') as f:
+              data = json.load(f)
+          iocs = []
+          for k, v in list(data.items())[:15]:
+              if isinstance(v, list) and v:
+                  iocs.append(v[0])
+          json.dump({'data': iocs}, open('data/threatfox.json', 'w'))
+          "
+
+          # GitHub Advisories
+          curl -sf "https://api.github.com/advisories?per_page=15&type=reviewed" -o data/github.json || echo '[]' > data/github.json
+
+          # Cleanup raw files
+          rm -f data/urlhaus_raw.json data/threatfox_raw.json
+
+          echo "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > data/last_updated.txt
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/
+          git diff --staged --quiet || git commit -m "Update threat data $(date -u +%Y-%m-%dT%H:%M:%S)"
+          git push
