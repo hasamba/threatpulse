@@ -1,0 +1,895 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ThreatPulse — Live Threat Intelligence Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg-primary: #0a0e17;
+  --bg-secondary: #111827;
+  --bg-card: #1a2236;
+  --bg-card-hover: #1f2a42;
+  --bg-input: #0f1623;
+  --border: #2a3550;
+  --border-light: #3a4a6b;
+  --text-primary: #e2e8f0;
+  --text-secondary: #8892a8;
+  --text-muted: #5a6580;
+  --accent: #3b82f6;
+  --accent-hover: #2563eb;
+  --critical: #ef4444;
+  --critical-bg: rgba(239,68,68,0.12);
+  --high: #f97316;
+  --high-bg: rgba(249,115,22,0.12);
+  --medium: #eab308;
+  --medium-bg: rgba(234,179,8,0.12);
+  --low: #22c55e;
+  --low-bg: rgba(34,197,94,0.12);
+  --info: #06b6d4;
+  --info-bg: rgba(6,182,212,0.12);
+  --cat-vulnerability: #8b5cf6;
+  --cat-malware: #ef4444;
+  --cat-breach: #f97316;
+  --cat-darkweb: #a855f7;
+  --cat-ransomware: #ec4899;
+  --cat-apt: #14b8a6;
+  --glow: 0 0 20px rgba(59,130,246,0.15);
+  --radius: 12px;
+  --radius-sm: 8px;
+  --transition: 0.2s ease;
+}
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  min-height: 100vh;
+  line-height: 1.5;
+}
+
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: var(--bg-primary); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--border-light); }
+
+/* Header */
+.header {
+  position: sticky; top: 0; z-index: 100;
+  background: rgba(10,14,23,0.85);
+  backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--border);
+  padding: 0 24px;
+}
+.header-inner {
+  max-width: 1440px; margin: 0 auto;
+  display: flex; align-items: center; justify-content: space-between;
+  height: 64px;
+}
+.logo {
+  display: flex; align-items: center; gap: 10px;
+  font-size: 20px; font-weight: 700; color: var(--text-primary);
+}
+.logo-icon {
+  width: 36px; height: 36px;
+  background: linear-gradient(135deg, var(--accent), #8b5cf6);
+  border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 18px;
+}
+.logo span { color: var(--accent); }
+.header-meta {
+  display: flex; align-items: center; gap: 16px;
+}
+.last-updated {
+  font-size: 12px; color: var(--text-muted);
+  font-family: 'JetBrains Mono', monospace;
+}
+.live-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--low); display: inline-block;
+  animation: pulse-dot 2s infinite;
+  margin-right: 4px;
+}
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; box-shadow: 0 0 4px var(--low); }
+  50% { opacity: 0.4; box-shadow: 0 0 8px var(--low); }
+}
+.header-actions { display: flex; align-items: center; gap: 12px; }
+.btn {
+  padding: 8px 16px; border-radius: var(--radius-sm);
+  border: 1px solid var(--border); background: var(--bg-secondary);
+  color: var(--text-primary); font-size: 13px; font-weight: 500;
+  cursor: pointer; transition: all var(--transition);
+  display: flex; align-items: center; gap: 6px;
+  font-family: inherit;
+}
+.btn:hover { border-color: var(--accent); background: var(--bg-card); }
+.btn-active { border-color: var(--accent); background: rgba(59,130,246,0.15); color: var(--accent); }
+.btn-refresh { position: relative; }
+.btn-refresh.spinning .refresh-icon { animation: spin 1s linear infinite; }
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+.auto-refresh-label { font-size: 11px; color: var(--text-muted); }
+.timer-display {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px; color: var(--accent);
+  min-width: 32px; text-align: center;
+}
+
+/* Layout */
+.layout {
+  max-width: 1440px; margin: 0 auto; padding: 24px;
+  display: grid; grid-template-columns: 280px 1fr; gap: 24px;
+}
+
+/* Sidebar */
+.sidebar { display: flex; flex-direction: column; gap: 20px; }
+.panel {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 20px;
+}
+.panel-title {
+  font-size: 12px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 1px; color: var(--text-muted); margin-bottom: 14px;
+}
+
+/* Stats */
+.stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.stat-card {
+  background: var(--bg-secondary); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 14px;
+  text-align: center; transition: all var(--transition);
+}
+.stat-card:hover { border-color: var(--border-light); }
+.stat-value { font-size: 26px; font-weight: 700; font-family: 'JetBrains Mono', monospace; }
+.stat-label { font-size: 11px; color: var(--text-muted); margin-top: 2px; font-weight: 500; }
+.stat-critical .stat-value { color: var(--critical); }
+.stat-high .stat-value { color: var(--high); }
+.stat-total .stat-value { color: var(--accent); }
+.stat-recent .stat-value { color: var(--info); }
+
+/* Search */
+.search-wrapper { position: relative; }
+.search-input {
+  width: 100%; padding: 10px 14px 10px 38px;
+  background: var(--bg-input); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); color: var(--text-primary);
+  font-size: 14px; font-family: inherit; transition: all var(--transition);
+}
+.search-input:focus { outline: none; border-color: var(--accent); box-shadow: var(--glow); }
+.search-input::placeholder { color: var(--text-muted); }
+.search-icon {
+  position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
+  color: var(--text-muted); font-size: 14px; pointer-events: none;
+}
+
+/* Filters */
+.filter-group { display: flex; flex-direction: column; gap: 4px; }
+.filter-btn {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 12px; border-radius: var(--radius-sm);
+  border: none; background: transparent;
+  color: var(--text-secondary); font-size: 13px; font-weight: 500;
+  cursor: pointer; transition: all var(--transition);
+  font-family: inherit; text-align: left;
+}
+.filter-btn:hover { background: var(--bg-secondary); color: var(--text-primary); }
+.filter-btn.active { background: rgba(59,130,246,0.1); color: var(--accent); }
+.filter-dot {
+  width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+}
+.filter-left { display: flex; align-items: center; gap: 8px; }
+.filter-count {
+  font-size: 11px; font-family: 'JetBrains Mono', monospace;
+  color: var(--text-muted); background: var(--bg-secondary);
+  padding: 1px 6px; border-radius: 8px;
+}
+
+/* Source filter */
+.source-filters { display: flex; flex-direction: column; gap: 4px; }
+.source-btn {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 12px; border-radius: var(--radius-sm);
+  border: none; background: transparent;
+  color: var(--text-secondary); font-size: 12px; font-weight: 500;
+  cursor: pointer; transition: all var(--transition);
+  font-family: inherit;
+}
+.source-btn:hover { background: var(--bg-secondary); color: var(--text-primary); }
+.source-btn.active { background: rgba(59,130,246,0.1); color: var(--accent); }
+.source-icon { font-size: 14px; }
+
+/* Feed cards */
+.feed { display: flex; flex-direction: column; gap: 16px; }
+.feed-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 4px;
+}
+.feed-title { font-size: 16px; font-weight: 600; }
+.feed-count { font-size: 13px; color: var(--text-muted); }
+
+.threat-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+  transition: all var(--transition);
+  cursor: default;
+  position: relative;
+  overflow: hidden;
+}
+.threat-card:hover {
+  border-color: var(--border-light);
+  background: var(--bg-card-hover);
+  transform: translateY(-1px);
+}
+.threat-card::before {
+  content: '';
+  position: absolute; left: 0; top: 0; bottom: 0;
+  width: 3px;
+}
+.threat-card.severity-critical::before { background: var(--critical); }
+.threat-card.severity-high::before { background: var(--high); }
+.threat-card.severity-medium::before { background: var(--medium); }
+.threat-card.severity-low::before { background: var(--low); }
+.threat-card.severity-info::before { background: var(--info); }
+
+.card-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.card-badges { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.badge {
+  padding: 3px 10px; border-radius: 20px;
+  font-size: 11px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.5px;
+}
+.badge-critical { background: var(--critical-bg); color: var(--critical); }
+.badge-high { background: var(--high-bg); color: var(--high); }
+.badge-medium { background: var(--medium-bg); color: var(--medium); }
+.badge-low { background: var(--low-bg); color: var(--low); }
+.badge-info { background: var(--info-bg); color: var(--info); }
+.badge-source {
+  background: rgba(139,92,246,0.12); color: #8b5cf6;
+}
+.badge-category {
+  background: var(--bg-secondary); color: var(--text-secondary);
+  border: 1px solid var(--border);
+}
+.card-time {
+  font-size: 12px; color: var(--text-muted);
+  font-family: 'JetBrains Mono', monospace;
+  white-space: nowrap; flex-shrink: 0;
+}
+.card-title {
+  font-size: 15px; font-weight: 600; line-height: 1.4;
+  margin-bottom: 8px; color: var(--text-primary);
+}
+.card-title a {
+  color: inherit; text-decoration: none;
+}
+.card-title a:hover { color: var(--accent); }
+.card-desc {
+  font-size: 13px; color: var(--text-secondary);
+  line-height: 1.6; margin-bottom: 12px;
+  display: -webkit-box; -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical; overflow: hidden;
+}
+.card-meta {
+  display: flex; flex-wrap: wrap; gap: 16px;
+  font-size: 12px; color: var(--text-muted);
+}
+.card-meta-item {
+  display: flex; align-items: center; gap: 4px;
+}
+.card-ioc {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px; color: var(--info);
+  background: var(--info-bg); padding: 4px 10px;
+  border-radius: 6px; display: inline-block;
+  margin-bottom: 8px; word-break: break-all;
+  max-width: 100%;
+}
+
+/* Loading */
+.loading-container {
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  padding: 60px 20px; gap: 16px;
+}
+.loading-spinner {
+  width: 40px; height: 40px;
+  border: 3px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+.loading-text { color: var(--text-muted); font-size: 14px; }
+
+/* Skeleton */
+.skeleton-card {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 20px;
+  animation: skeleton-pulse 1.5s ease-in-out infinite;
+}
+.skeleton-line {
+  height: 14px; background: var(--bg-secondary);
+  border-radius: 4px; margin-bottom: 10px;
+}
+.skeleton-line.w60 { width: 60%; }
+.skeleton-line.w80 { width: 80%; }
+.skeleton-line.w40 { width: 40%; }
+.skeleton-line.w100 { width: 100%; }
+@keyframes skeleton-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* Error state */
+.error-state {
+  background: var(--critical-bg); border: 1px solid rgba(239,68,68,0.3);
+  border-radius: var(--radius); padding: 20px;
+  display: flex; align-items: center; gap: 12px;
+  margin-bottom: 12px;
+}
+.error-icon { font-size: 20px; flex-shrink: 0; }
+.error-text { font-size: 13px; color: var(--critical); }
+.error-source { font-weight: 600; }
+
+/* Empty state */
+.empty-state {
+  text-align: center; padding: 40px;
+  color: var(--text-muted); font-size: 14px;
+}
+
+/* API status indicators */
+.api-status { display: flex; flex-direction: column; gap: 6px; }
+.api-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 6px 0;
+}
+.api-name { font-size: 12px; color: var(--text-secondary); }
+.api-indicator {
+  width: 8px; height: 8px; border-radius: 50%;
+}
+.api-ok { background: var(--low); box-shadow: 0 0 4px var(--low); }
+.api-err { background: var(--critical); box-shadow: 0 0 4px var(--critical); }
+.api-loading { background: var(--medium); animation: pulse-dot 1s infinite; }
+
+/* Mobile */
+@media (max-width: 900px) {
+  .layout { grid-template-columns: 1fr; }
+  .sidebar { order: -1; }
+  .header-inner { flex-wrap: wrap; height: auto; padding: 12px 0; gap: 8px; }
+}
+</style>
+</head>
+<body>
+
+<header class="header">
+  <div class="header-inner">
+    <div class="logo">
+      <div class="logo-icon">🛡</div>
+      Threat<span>Pulse</span>
+    </div>
+    <div class="header-meta">
+      <span class="last-updated" id="lastUpdated">
+        <span class="live-dot"></span> Loading...
+      </span>
+    </div>
+    <div class="header-actions">
+      <div style="display:flex;align-items:center;gap:8px;">
+        <span class="auto-refresh-label">Auto-refresh:</span>
+        <button class="btn btn-icon" id="toggleAutoRefresh" title="Toggle auto-refresh">
+          <span class="timer-display" id="timerDisplay">5:00</span>
+        </button>
+      </div>
+      <button class="btn btn-refresh" id="refreshBtn" onclick="refreshAll()" title="Refresh now">
+        <span class="refresh-icon" style="display:inline-block;">⟳</span> Refresh
+      </button>
+    </div>
+  </div>
+</header>
+
+<div class="layout">
+  <aside class="sidebar">
+    <!-- Stats -->
+    <div class="panel">
+      <div class="panel-title">Threat Overview</div>
+      <div class="stats-grid">
+        <div class="stat-card stat-total">
+          <div class="stat-value" id="statTotal">—</div>
+          <div class="stat-label">Total Threats</div>
+        </div>
+        <div class="stat-card stat-critical">
+          <div class="stat-value" id="statCritical">—</div>
+          <div class="stat-label">Critical</div>
+        </div>
+        <div class="stat-card stat-high">
+          <div class="stat-value" id="statHigh">—</div>
+          <div class="stat-label">High</div>
+        </div>
+        <div class="stat-card stat-recent">
+          <div class="stat-value" id="statSources">—</div>
+          <div class="stat-label">Sources</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Search -->
+    <div class="panel">
+      <div class="panel-title">Search</div>
+      <div class="search-wrapper">
+        <span class="search-icon">🔍</span>
+        <input type="text" class="search-input" id="searchInput" placeholder="Search threats, IOCs, CVEs..." oninput="applyFilters()">
+      </div>
+    </div>
+
+    <!-- Severity Filter -->
+    <div class="panel">
+      <div class="panel-title">Severity</div>
+      <div class="filter-group" id="severityFilters">
+        <button class="filter-btn active" onclick="toggleSeverity(this, 'all')">
+          <span class="filter-left"><span class="filter-dot" style="background:var(--accent)"></span> All</span>
+          <span class="filter-count" id="countAll">0</span>
+        </button>
+        <button class="filter-btn" onclick="toggleSeverity(this, 'critical')">
+          <span class="filter-left"><span class="filter-dot" style="background:var(--critical)"></span> Critical</span>
+          <span class="filter-count" id="countCritical">0</span>
+        </button>
+        <button class="filter-btn" onclick="toggleSeverity(this, 'high')">
+          <span class="filter-left"><span class="filter-dot" style="background:var(--high)"></span> High</span>
+          <span class="filter-count" id="countHigh">0</span>
+        </button>
+        <button class="filter-btn" onclick="toggleSeverity(this, 'medium')">
+          <span class="filter-left"><span class="filter-dot" style="background:var(--medium)"></span> Medium</span>
+          <span class="filter-count" id="countMedium">0</span>
+        </button>
+        <button class="filter-btn" onclick="toggleSeverity(this, 'low')">
+          <span class="filter-left"><span class="filter-dot" style="background:var(--low)"></span> Low</span>
+          <span class="filter-count" id="countLow">0</span>
+        </button>
+        <button class="filter-btn" onclick="toggleSeverity(this, 'info')">
+          <span class="filter-left"><span class="filter-dot" style="background:var(--info)"></span> Info</span>
+          <span class="filter-count" id="countInfo">0</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Source Filter -->
+    <div class="panel">
+      <div class="panel-title">Data Sources</div>
+      <div class="source-filters" id="sourceFilters">
+        <button class="source-btn active" onclick="toggleSource(this, 'all')">
+          <span class="source-icon">📡</span> All Sources
+        </button>
+        <button class="source-btn" onclick="toggleSource(this, 'nvd')">
+          <span class="source-icon">🏛</span> NVD/CVE
+        </button>
+        <button class="source-btn" onclick="toggleSource(this, 'urlhaus')">
+          <span class="source-icon">🦠</span> GitHub Malware
+        </button>
+        <button class="source-btn" onclick="toggleSource(this, 'threatfox')">
+          <span class="source-icon">🐙</span> GitHub Advisory
+        </button>
+        <button class="source-btn" onclick="toggleSource(this, 'github')">
+          <span class="source-icon">🐙</span> GitHub Advisory
+        </button>
+      </div>
+    </div>
+
+    <!-- API Status -->
+    <div class="panel">
+      <div class="panel-title">API Status</div>
+      <div class="api-status" id="apiStatus">
+        <div class="api-row"><span class="api-name">NVD/CVE</span><span class="api-indicator api-loading" id="apiNvd"></span></div>
+        <div class="api-row"><span class="api-name">GitHub Malware</span><span class="api-indicator api-loading" id="apiUrlhaus"></span></div>
+        <div class="api-row"><span class="api-name">GitHub Advisory</span><span class="api-indicator api-loading" id="apiThreatfox"></span></div>
+        <div class="api-row"><span class="api-name">GitHub Advisory</span><span class="api-indicator api-loading" id="apiOtx"></span></div>
+      </div>
+    </div>
+  </aside>
+
+  <main class="feed" id="feed">
+    <div class="feed-header">
+      <div class="feed-title">Live Threat Feed</div>
+      <div class="feed-count" id="feedCount">Loading...</div>
+    </div>
+    <div id="errors"></div>
+    <div id="cards">
+      <!-- Skeleton loading -->
+      <div class="skeleton-card"><div class="skeleton-line w60"></div><div class="skeleton-line w100"></div><div class="skeleton-line w80"></div><div class="skeleton-line w40"></div></div>
+      <div class="skeleton-card"><div class="skeleton-line w60"></div><div class="skeleton-line w100"></div><div class="skeleton-line w80"></div><div class="skeleton-line w40"></div></div>
+      <div class="skeleton-card"><div class="skeleton-line w60"></div><div class="skeleton-line w100"></div><div class="skeleton-line w80"></div><div class="skeleton-line w40"></div></div>
+      <div class="skeleton-card"><div class="skeleton-line w60"></div><div class="skeleton-line w100"></div><div class="skeleton-line w80"></div><div class="skeleton-line w40"></div></div>
+      <div class="skeleton-card"><div class="skeleton-line w60"></div><div class="skeleton-line w100"></div><div class="skeleton-line w80"></div><div class="skeleton-line w40"></div></div>
+    </div>
+  </main>
+</div>
+
+<script>
+// ─── State ───────────────────────────────────────────────────────
+let allThreats = [];
+let activeSeverity = 'all';
+let activeSource = 'all';
+let autoRefreshEnabled = true;
+let autoRefreshInterval = 300; // 5 minutes
+let countdown = autoRefreshInterval;
+let countdownTimer = null;
+let refreshTimer = null;
+const errors = [];
+
+// ─── Utility ─────────────────────────────────────────────────────
+function esc(s) {
+  if (!s) return '';
+  const d = document.createElement('div');
+  d.textContent = String(s);
+  return d.innerHTML;
+}
+
+function timeAgo(dateStr) {
+  if (!dateStr) return 'Unknown';
+  const d = new Date(dateStr);
+  if (isNaN(d)) return dateStr;
+  const s = Math.floor((Date.now() - d) / 1000);
+  if (s < 60) return s + 's ago';
+  if (s < 3600) return Math.floor(s/60) + 'm ago';
+  if (s < 86400) return Math.floor(s/3600) + 'h ago';
+  return Math.floor(s/86400) + 'd ago';
+}
+
+function cvssToSeverity(score) {
+  if (score >= 9) return 'critical';
+  if (score >= 7) return 'high';
+  if (score >= 4) return 'medium';
+  if (score > 0) return 'low';
+  return 'info';
+}
+
+function setApiStatus(id, ok) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.className = 'api-indicator ' + (ok ? 'api-ok' : 'api-err');
+}
+
+// ─── Fetch NVD/CVE ──────────────────────────────────────────────
+async function fetchNVD() {
+  try {
+    const r = await fetch('https://services.nvd.nist.gov/rest/json/cves/2.0?resultsPerPage=10');
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const data = await r.json();
+    setApiStatus('apiNvd', true);
+    return (data.vulnerabilities || []).map(v => {
+      const cve = v.cve || {};
+      const id = cve.id || 'CVE-????';
+      const desc = (cve.descriptions || []).find(d => d.lang === 'en');
+      const metrics = cve.metrics || {};
+      let score = 0;
+      if (metrics.cvssMetricV31 && metrics.cvssMetricV31[0]) {
+        score = metrics.cvssMetricV31[0].cvssData?.baseScore || 0;
+      } else if (metrics.cvssMetricV2 && metrics.cvssMetricV2[0]) {
+        score = metrics.cvssMetricV2[0].cvssData?.baseScore || 0;
+      }
+      const refs = (cve.references || []).slice(0, 1);
+      return {
+        id,
+        title: id + ': ' + (desc ? desc.value.substring(0, 120) : 'No description'),
+        description: desc ? desc.value : 'No description available.',
+        severity: cvssToSeverity(score),
+        cvss: score,
+        source: 'nvd',
+        sourceName: 'NVD/CVE',
+        category: 'Vulnerability',
+        date: cve.published || cve.lastModified || new Date().toISOString(),
+        link: refs[0]?.url || ('https://nvd.nist.gov/vuln/detail/' + id),
+        ioc: id,
+      };
+    });
+  } catch (e) {
+    setApiStatus('apiNvd', false);
+    errors.push({ source: 'NVD/CVE', message: e.message });
+    return [];
+  }
+}
+
+// ─── Fetch URLhaus ──────────────────────────────────────────────
+async function fetchURLhaus() {
+  try {
+    const r = await fetch('https://api.github.com/advisories?per_page=15&type=malware');
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const data = await r.json();
+    setApiStatus('apiUrlhaus', true);
+    return data.map(adv => {
+      const sev = adv.severity === 'critical' ? 'critical' : adv.severity === 'high' ? 'high' : adv.severity === 'medium' ? 'medium' : 'low';
+      return {
+        id: adv.ghsa_id,
+        title: '🦠 ' + (adv.summary || adv.ghsa_id),
+        description: (adv.description || '').slice(0, 300),
+        severity: sev,
+        source: 'urlhaus',
+        sourceName: 'GitHub Malware',
+        category: 'Malware',
+        date: adv.published_at || adv.updated_at || new Date().toISOString(),
+        link: adv.html_url || 'https://github.com/advisories/' + adv.ghsa_id,
+        ioc: adv.cve_id || adv.ghsa_id,
+        tags: (adv.identifiers || []).map(i => i.value).filter(Boolean),
+      };
+    });
+  } catch (e) {
+    setApiStatus('apiUrlhaus', false);
+    errors.push({ source: 'URLhaus', message: e.message });
+    return [];
+  }
+}
+
+// ─── Fetch ThreatFox ────────────────────────────────────────────
+async function fetchThreatFox() {
+  try {
+    const r = await fetch('https://api.github.com/advisories?per_page=15&type=reviewed');
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const data = await r.json();
+    setApiStatus('apiThreatfox', true);
+    return data.map(adv => {
+      const sevMap = { 'critical': 'critical', 'high': 'high', 'medium': 'medium', 'low': 'low' };
+      const sev = sevMap[adv.severity] || 'medium';
+      return {
+        id: adv.cve_id || adv.ghsa_id,
+        title: adv.summary || adv.ghsa_id,
+        description: (adv.description || '').slice(0, 300),
+        severity: sev,
+        source: 'threatfox',
+        sourceName: 'GitHub Advisory',
+        category: 'Security Advisory',
+        date: adv.published_at || adv.updated_at || new Date().toISOString(),
+        link: adv.html_url || 'https://github.com/advisories/' + adv.ghsa_id,
+        ioc: adv.cve_id || adv.ghsa_id,
+        tags: (adv.identifiers || []).map(i => i.value).filter(Boolean),
+      };
+    });
+  } catch (e) {
+    setApiStatus('apiThreatfox', false);
+    errors.push({ source: 'GitHub Advisory', message: e.message });
+    return [];
+  }
+}
+
+// ─── Fetch AlienVault OTX ───────────────────────────────────────
+async function fetchOTX() {
+  try {
+    const proxy = 'https://api.allorigins.win/raw?url=';
+    const url = encodeURIComponent('https://otx.alienvault.com/api/v1/pulses/subscribed?limit=10');
+    const r = await fetch(proxy + url);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const data = await r.json();
+    setApiStatus('apiOtx', true);
+    return (data.results || []).slice(0, 10).map(p => {
+      const tags = p.tags || [];
+      const sev = tags.some(t => /apt|ransomware|critical/i.test(t)) ? 'critical'
+                : tags.some(t => /malware|trojan|exploit/i.test(t)) ? 'high'
+                : tags.some(t => /phish|spam/i.test(t)) ? 'medium' : 'info';
+      const indicators = (p.indicators || []).length;
+      return {
+        id: 'OTX-' + (p.id || '').substring(0, 8),
+        title: p.name || 'OTX Pulse',
+        description: (p.description || 'No description.').substring(0, 300) + (indicators ? ' [' + indicators + ' indicators]' : ''),
+        severity: sev,
+        source: 'otx',
+        sourceName: 'AlienVault OTX',
+        category: 'Threat Intel',
+        date: p.created || p.modified || new Date().toISOString(),
+        link: 'https://otx.alienvault.com/pulse/' + p.id,
+        tags,
+        indicators,
+      };
+    });
+  } catch (e) {
+    setApiStatus('apiOtx', false);
+    errors.push({ source: 'AlienVault OTX', message: e.message });
+    return [];
+  }
+}
+
+// ─── Render ─────────────────────────────────────────────────────
+function renderCard(t) {
+  const sevClass = 'severity-' + t.severity;
+  const badgeClass = 'badge-' + t.severity;
+  const tagsHtml = (t.tags || []).slice(0, 3).map(tag =>
+    '<span class="badge badge-category">' + esc(tag) + '</span>'
+  ).join('');
+  const iocHtml = t.ioc ? '<div class="card-ioc">' + esc(t.ioc) + '</div>' : '';
+  const linkAttr = t.link ? ' href="' + esc(t.link) + '" target="_blank" rel="noopener"' : '';
+  const cvssHtml = t.cvss ? '<span class="card-meta-item">⚡ CVSS ' + t.cvss.toFixed(1) + '</span>' : '';
+  const confHtml = t.confidence ? '<span class="card-meta-item">🎯 ' + t.confidence + '%</span>' : '';
+
+  return `<div class="threat-card ${sevClass}" data-severity="${t.severity}" data-source="${t.source}">
+    <div class="card-top">
+      <div class="card-badges">
+        <span class="badge ${badgeClass}">${esc(t.severity)}</span>
+        <span class="badge badge-source">${esc(t.sourceName)}</span>
+        ${tagsHtml}
+      </div>
+      <span class="card-time">${timeAgo(t.date)}</span>
+    </div>
+    <div class="card-title"><a${linkAttr}>${esc(t.title)}</a></div>
+    ${iocHtml}
+    <div class="card-desc">${esc(t.description)}</div>
+    <div class="card-meta">
+      <span class="card-meta-item">📁 ${esc(t.category)}</span>
+      <span class="card-meta-item">🆔 ${esc(t.id)}</span>
+      ${cvssHtml}${confHtml}
+    </div>
+  </div>`;
+}
+
+function applyFilters() {
+  const q = (document.getElementById('searchInput').value || '').toLowerCase();
+  let filtered = allThreats;
+
+  if (activeSeverity !== 'all') {
+    filtered = filtered.filter(t => t.severity === activeSeverity);
+  }
+  if (activeSource !== 'all') {
+    filtered = filtered.filter(t => t.source === activeSource);
+  }
+  if (q) {
+    filtered = filtered.filter(t =>
+      (t.title + ' ' + t.description + ' ' + (t.ioc || '') + ' ' + (t.tags || []).join(' ') + ' ' + t.id).toLowerCase().includes(q)
+    );
+  }
+
+  document.getElementById('feedCount').textContent = filtered.length + ' of ' + allThreats.length + ' threats';
+  const container = document.getElementById('cards');
+
+  if (filtered.length === 0) {
+    container.innerHTML = '<div class="empty-state">No threats match your filters. Try adjusting your search or filters.</div>';
+  } else {
+    container.innerHTML = filtered.map(renderCard).join('');
+  }
+}
+
+function updateStats() {
+  const total = allThreats.length;
+  const critCount = allThreats.filter(t => t.severity === 'critical').length;
+  const highCount = allThreats.filter(t => t.severity === 'high').length;
+  const medCount = allThreats.filter(t => t.severity === 'medium').length;
+  const lowCount = allThreats.filter(t => t.severity === 'low').length;
+  const infoCount = allThreats.filter(t => t.severity === 'info').length;
+  const sources = new Set(allThreats.map(t => t.source)).size;
+
+  document.getElementById('statTotal').textContent = total;
+  document.getElementById('statCritical').textContent = critCount;
+  document.getElementById('statHigh').textContent = highCount;
+  document.getElementById('statSources').textContent = sources;
+
+  document.getElementById('countAll').textContent = total;
+  document.getElementById('countCritical').textContent = critCount;
+  document.getElementById('countHigh').textContent = highCount;
+  document.getElementById('countMedium').textContent = medCount;
+  document.getElementById('countLow').textContent = lowCount;
+  document.getElementById('countInfo').textContent = infoCount;
+}
+
+function renderErrors() {
+  const container = document.getElementById('errors');
+  if (errors.length === 0) { container.innerHTML = ''; return; }
+  container.innerHTML = errors.map(e =>
+    `<div class="error-state">
+      <span class="error-icon">⚠️</span>
+      <span class="error-text"><span class="error-source">${esc(e.source)}</span>: ${esc(e.message)}</span>
+    </div>`
+  ).join('');
+}
+
+// ─── Refresh ────────────────────────────────────────────────────
+async function refreshAll() {
+  const btn = document.getElementById('refreshBtn');
+  btn.classList.add('spinning');
+  errors.length = 0;
+
+  // Reset API indicators
+  ['apiNvd','apiUrlhaus','apiThreatfox','apiOtx'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.className = 'api-indicator api-loading';
+  });
+
+  // Show skeleton if first load
+  if (allThreats.length === 0) {
+    document.getElementById('cards').innerHTML = Array(5).fill(
+      '<div class="skeleton-card"><div class="skeleton-line w60"></div><div class="skeleton-line w100"></div><div class="skeleton-line w80"></div><div class="skeleton-line w40"></div></div>'
+    ).join('');
+  }
+
+  // Fetch all sources directly (client-side, no backend needed)
+  const [nvd, urlhaus, threatfox, otx] = await Promise.all([
+    fetchNVD(),
+    fetchURLhaus(),
+    fetchThreatFox(),
+    fetchOTX(),
+  ]);
+
+  allThreats = [...nvd, ...urlhaus, ...threatfox, ...otx];
+
+  // Sort by date descending
+  allThreats.sort((a, b) => {
+    const da = new Date(a.date), db = new Date(b.date);
+    if (isNaN(da)) return 1;
+    if (isNaN(db)) return -1;
+    return db - da;
+  });
+
+  updateStats();
+  renderErrors();
+  applyFilters();
+
+  const now = new Date();
+  document.getElementById('lastUpdated').innerHTML =
+    '<span class="live-dot"></span> Last updated: ' + now.toLocaleTimeString();
+
+  btn.classList.remove('spinning');
+
+  // Reset countdown
+  countdown = autoRefreshInterval;
+  updateTimerDisplay();
+}
+
+// ─── Filters UI ─────────────────────────────────────────────────
+function toggleSeverity(btn, value) {
+  document.querySelectorAll('#severityFilters .filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  activeSeverity = value;
+  applyFilters();
+}
+
+function toggleSource(btn, value) {
+  document.querySelectorAll('#sourceFilters .source-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  activeSource = value;
+  applyFilters();
+}
+
+// ─── Auto-refresh timer ─────────────────────────────────────────
+function updateTimerDisplay() {
+  const m = Math.floor(countdown / 60);
+  const s = countdown % 60;
+  document.getElementById('timerDisplay').textContent =
+    m + ':' + String(s).padStart(2, '0');
+}
+
+function startAutoRefresh() {
+  clearInterval(countdownTimer);
+  clearTimeout(refreshTimer);
+  countdown = autoRefreshInterval;
+  updateTimerDisplay();
+
+  if (!autoRefreshEnabled) return;
+
+  countdownTimer = setInterval(() => {
+    countdown--;
+    if (countdown <= 0) {
+      countdown = autoRefreshInterval;
+      refreshAll();
+    }
+    updateTimerDisplay();
+  }, 1000);
+}
+
+document.getElementById('toggleAutoRefresh').addEventListener('click', () => {
+  autoRefreshEnabled = !autoRefreshEnabled;
+  const btn = document.getElementById('toggleAutoRefresh');
+  if (autoRefreshEnabled) {
+    btn.classList.remove('btn-active');
+    startAutoRefresh();
+  } else {
+    btn.classList.add('btn-active');
+    clearInterval(countdownTimer);
+    document.getElementById('timerDisplay').textContent = 'OFF';
+  }
+});
+
+// ─── Init ───────────────────────────────────────────────────────
+refreshAll();
+startAutoRefresh();
+</script>
+</body>
+</html>
